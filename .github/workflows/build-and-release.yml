@@ -1,0 +1,52 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v1
+
+      - name: Install .NET Framework 4.7.2 Developer Pack
+        run: choco install netfx-4.7.2-devpack -y
+
+      - name: Download and extract DotNetZip
+        shell: bash
+        run: |
+          curl -L -o DotNetZip.1.15.0.nupkg https://www.nuget.org/api/v2/package/DotNetZip/1.15.0
+          mkdir -p "packages/DotNetZip.1.15.0/lib/net40"
+          unzip DotNetZip.1.15.0.nupkg lib/net40/DotNetZip.dll -d "packages/DotNetZip.1.15.0"
+
+      - name: Build Debug
+        run: msbuild "YPF Manager.sln" /p:Configuration=Debug /p:OutDir=${{ github.workspace }}\build\Debug\
+
+      - name: Build Release
+        run: msbuild "YPF Manager.sln" /p:Configuration=Release /p:OutDir=${{ github.workspace }}\build\Release\
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ${{ github.workspace }}\build\Debug\* -DestinationPath ${{ github.workspace }}\YPF-Manager-Debug.zip
+          Compress-Archive -Path ${{ github.workspace }}\build\Release\*.exe,${{ github.workspace }}\build\Release\*.dll -DestinationPath ${{ github.workspace }}\YPF-Manager-Release.zip
+
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          generateReleaseNotes: true
+          artifacts: ${{ github.workspace }}/*.zip
